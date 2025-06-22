@@ -41,17 +41,32 @@ services:
     build: ./cube-mcp
     container_name: mcp
     ports:
-      - '8000:8000'
+      - '3001:3001'
     environment:
       - CUBEJS_BASE_URL=http://cube:4000
       - CUBEJS_API_TOKEN=secret
-      - MCP_PORT=8000
+      - MCP_PORT=3001
       - CUBEJS_CUBESQL_HOST=cube
       - CUBEJS_CUBESQL_PORT=15432
       - CUBEJS_CUBESQL_USER=cubesql
       - CUBEJS_CUBESQL_PASSWORD=cubesql
     depends_on:
       - cube
+
+  adk:
+    build: ./adk
+    container_name: cubesight
+    restart: always
+    ports:
+      - '8000:8000'
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - CUBEJS_BASE_URL=http://cube:4000
+      - CUBEJS_API_TOKEN=secret
+    depends_on:
+      - cube
+      - mcp
 
   pgadmin:
     image: dpage/pgadmin4
