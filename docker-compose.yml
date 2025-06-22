@@ -4,13 +4,47 @@ services:
     container_name: db
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
+      POSTGRES_USER: cubepostgres
+      POSTGRES_PASSWORD: password
       POSTGRES_DB: titanic
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  cube:
+    build: ./cube
+    container_name: cube
+    restart: always
+    ports:
+      - '4000:4000'
+    volumes:
+      - cube_data:/cube/data 
+    environment:
+      CUBEJS_API_SECRET: secret
+      CUBEJS_DEV_MODE: true
+      CUBEJS_DB_TYPE: postgres
+      CUBEJS_DB_HOST: db
+      CUBEJS_DB_NAME: titanic
+      CUBEJS_DB_USER: cubepostgres
+      CUBEJS_DB_PASS: password
+      CUBEJS_DB_SSL: false
+    depends_on:
+      - db
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    ports:
+      - '8080:80'
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
 volumes:
   postgres_data:
+  cube_data:
+  pgadmin_data:
