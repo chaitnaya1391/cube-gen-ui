@@ -18,6 +18,7 @@ services:
     restart: always
     ports:
       - '4000:4000'
+      - '15432:15432'
     volumes:
       - cube_data:/cube/data 
     environment:
@@ -29,6 +30,10 @@ services:
       CUBEJS_DB_USER: cubepostgres
       CUBEJS_DB_PASS: password
       CUBEJS_DB_SSL: false
+      CUBEJS_PG_SQL_PORT: 15432
+      CUBEJS_SQL_USER: cubesql
+      CUBEJS_SQL_PASSWORD: cubesql
+
     depends_on:
       - db
 
@@ -41,6 +46,10 @@ services:
       - CUBEJS_BASE_URL=http://cube:4000
       - CUBEJS_API_TOKEN=secret
       - MCP_PORT=8000
+      - CUBEJS_CUBESQL_HOST=cube
+      - CUBEJS_CUBESQL_PORT=15432
+      - CUBEJS_CUBESQL_USER=cubesql
+      - CUBEJS_CUBESQL_PASSWORD=cubesql
     depends_on:
       - cube
 

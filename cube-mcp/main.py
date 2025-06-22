@@ -11,6 +11,7 @@ import sys
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
+import asyncpg
 import httpx
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
@@ -25,10 +26,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CubeJSMCPServer:
-    def __init__(self, base_url: str, api_token: Optional[str] = None, port: int = 8000):
+    def __init__(self, base_url: str, api_token: Optional[str] = None, port: int = 8000, 
+                 cubesql_host: str = "localhost", cubesql_port: int = 15432, 
+                 cubesql_user: str = "cubesql", cubesql_password: str = "cubesql"):
         self.base_url = base_url.rstrip('/')
         self.api_token = api_token
         self.port = port
+        self.cubesql_host = cubesql_host
+        self.cubesql_port = cubesql_port
+        self.cubesql_user = cubesql_user
+        self.cubesql_password = cubesql_password
         self.server = Server("cubejs-mcp-server")
         self._setup_handlers()
 
@@ -126,6 +133,36 @@ class CubeJSMCPServer:
                         "additionalProperties": False,
                     },
                 },
+                {
+                    "name": "cubejs_sql",
+                    "description": "Execute a SQL query against CubeJS using the SQL API endpoint",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "SQL query to execute against the CubeJS data model"
+                            }
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "name": "cubejs_cubesql",
+                    "description": "Execute a SQL query directly against CubeSQL PostgreSQL endpoint",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "SQL query to execute directly against the CubeSQL PostgreSQL endpoint"
+                            }
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
             ]
 
         @self.server.list_resources()
@@ -152,6 +189,16 @@ class CubeJSMCPServer:
                     if not query:
                         raise ValueError("Query parameter is required")
                     return await self._load_data(query)
+                elif name == "cubejs_sql":
+                    query = arguments.get("query")
+                    if not query:
+                        raise ValueError("Query parameter is required")
+                    return await self._execute_sql(query)
+                elif name == "cubejs_cubesql":
+                    query = arguments.get("query")
+                    if not query:
+                        raise ValueError("Query parameter is required")
+                    return await self._execute_cubesql(query)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             except Exception as e:
@@ -181,6 +228,45 @@ class CubeJSMCPServer:
             response.raise_for_status()
             return response.json()
 
+    async def _make_sql_request(self, endpoint: str, query: str) -> Dict[str, Any]:
+        """Make HTTP request to CubeJS SQL API endpoint that returns streaming data."""
+        url = urljoin(f"{self.base_url}/", f"cubejs-api/{endpoint}")
+        logger.info(f"Making POST request to SQL endpoint: {url}")
+        
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json={"query": query})
+            response.raise_for_status()
+            
+            # Parse the streaming newline-delimited JSON response
+            response_text = response.text
+            lines = response_text.strip().split('\n')
+            
+            parsed_response = {
+                "schema": None,
+                "data": []
+            }
+            
+            for line in lines:
+                if line.strip():
+                    try:
+                        json_obj = json.loads(line)
+                        if "schema" in json_obj:
+                            parsed_response["schema"] = json_obj["schema"]
+                        elif "data" in json_obj:
+                            parsed_response["data"].extend(json_obj["data"])
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON line: {line}, error: {e}")
+                        continue
+            
+            return parsed_response
+
     async def _get_meta(self):
         """Get CubeJS metadata."""
         try:
@@ -200,6 +286,57 @@ class CubeJSMCPServer:
             return [{"type": "text", "text": json.dumps(result, indent=2)}]
         except Exception as e:
             logger.error(f"Error loading data: {e}")
+            raise
+
+    async def _execute_sql(self, query: str):
+        """Execute a SQL query against CubeJS using the SQL API endpoint."""
+        try:
+            # The cubesql endpoint returns streaming newline-delimited JSON
+            result = await self._make_sql_request("v1/cubesql", query)
+            return [{"type": "text", "text": json.dumps(result, indent=2)}]
+        except Exception as e:
+            logger.error(f"Error executing SQL query: {e}")
+            raise
+
+    async def _execute_cubesql(self, query: str):
+        """Execute a SQL query directly against CubeSQL PostgreSQL endpoint."""
+        try:
+            # Connect directly to the CubeSQL PostgreSQL endpoint
+            conn = await asyncpg.connect(
+                host=self.cubesql_host,
+                port=self.cubesql_port,
+                user=self.cubesql_user,
+                password=self.cubesql_password,
+                database="cube"
+            )
+            
+            try:
+                # Execute the query
+                rows = await conn.fetch(query)
+                
+                # Convert rows to a list of dictionaries
+                result_data = []
+                for row in rows:
+                    result_data.append(dict(row))
+                
+                # Get column information
+                columns = []
+                if rows:
+                    columns = list(rows[0].keys())
+                
+                result = {
+                    "columns": columns,
+                    "data": result_data,
+                    "rowCount": len(result_data)
+                }
+                
+                return [{"type": "text", "text": json.dumps(result, indent=2)}]
+                
+            finally:
+                await conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error executing CubeSQL query: {e}")
             raise
 
     def _validate_query(self, query: Dict[str, Any]) -> None:
@@ -285,11 +422,17 @@ async def main():
     api_token = os.getenv("CUBEJS_API_TOKEN")
     port = int(os.getenv("MCP_PORT", "8000"))
     
+    # CubeSQL configuration - use the cube service hostname in Docker
+    cubesql_host = os.getenv("CUBEJS_CUBESQL_HOST", "cube")
+    cubesql_port = int(os.getenv("CUBEJS_CUBESQL_PORT", "15432"))
+    cubesql_user = os.getenv("CUBEJS_CUBESQL_USER", "cubesql")
+    cubesql_password = os.getenv("CUBEJS_CUBESQL_PASSWORD", "cubesql")
+    
     if not base_url:
         logger.error("CUBEJS_BASE_URL environment variable is required")
         sys.exit(1)
     
-    server = CubeJSMCPServer(base_url, api_token, port)
+    server = CubeJSMCPServer(base_url, api_token, port, cubesql_host, cubesql_port, cubesql_user, cubesql_password)
     await server.run_sse()
 
 if __name__ == "__main__":
