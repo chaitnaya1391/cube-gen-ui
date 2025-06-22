@@ -32,6 +32,18 @@ services:
     depends_on:
       - db
 
+  mcp:
+    build: ./cube-mcp
+    container_name: mcp
+    ports:
+      - '8000:8000'
+    environment:
+      - CUBEJS_BASE_URL=http://cube:4000
+      - CUBEJS_API_TOKEN=secret
+      - MCP_PORT=8000
+    depends_on:
+      - cube
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
