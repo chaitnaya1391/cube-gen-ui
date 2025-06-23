@@ -21,10 +21,10 @@ cubesight_agent = LlmAgent(
         api_key=api_key
     ),
     description=(
-        "Agent to understand cube schema and query cube ."
+        "Agent to understand cube schema and query cube for data."
     ),
     instruction=(
-        "You are a helpful agent who can query cube and plot visuals."
+        "You are a helpful agent who can query data."
     ),
     tools=[toolset]
 )
@@ -37,17 +37,20 @@ plot_agent = LlmAgent(
         api_key=api_key
     ),
     description=(
-        "Agent to plot visuals from cube data."
+        """Create a React data visualization component that:
+           - Connects to CubeJS data and renders charts using Recharts
+           - Is a complete, self-contained single file ready for Electron
+           - Automatically selects the most appropriate chart type based on the data structure
+           - Fetches and analyzes cube metadata to determine optimal visualization
+           - Handles multiple data types (time series, categorical, numerical comparisons)
+           - Includes responsive design and error handling
+           - Uses modern React hooks and clean code patterns
+           - Returns only executable code without explanations or comments
+           """
     ),
     instruction=(
-        "You are a helpful agent who can plot visuals from cube data."
+        "You are a helpful agent who can plot visuals from cube data in React using Recharts."
     ),
-)
-
-pipeline_agent = SequentialAgent(
-    sub_agents=[cubesight_agent],
-    name="pipeline_agent",
-    description="Pipeline agent to greet user and query cube ",
 )
 
 greeting_agent = LlmAgent(
@@ -63,7 +66,7 @@ greeting_agent = LlmAgent(
     instruction=(
         "You are a helpful agent who can greet user, manage session and delegate to pipeline agent. Do not use tools directly. Restrict conversation to pipeline agent."
     ),
-    sub_agents=[pipeline_agent]
+    sub_agents=[cubesight_agent, plot_agent]
 )
 
 root_agent = greeting_agent
