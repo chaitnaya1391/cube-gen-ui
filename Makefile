@@ -21,11 +21,16 @@ restart:
 exec:
 	docker compose exec db psql -U cubepostgres -d titanic
 
-mcp-build:
+reset-mcp:
+	docker compose down mcp
 	docker compose build mcp
+	docker compose up -d mcp
 
-mcp-run:
-	docker compose run --rm mcp
+reset-adk:
+	docker compose down adk
+	docker compose build adk
+	docker compose up -d adk
+
 
 reset:
 	docker compose down
