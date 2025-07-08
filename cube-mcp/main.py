@@ -307,12 +307,13 @@ class CubeJSMCPServer:
                 port=self.cubesql_port,
                 user=self.cubesql_user,
                 password=self.cubesql_password,
-                database="cube"
+                database="cube",
+                timeout=15
             )
             
             try:
                 # Execute the query
-                rows = await conn.fetch(query)
+                rows = await conn.fetch(query, timeout=15)
                 
                 # Convert rows to a list of dictionaries
                 result_data = []
